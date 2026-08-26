@@ -1,0 +1,15 @@
+# Normalize text line endings in the repository; check out native on each OS.
+* text=auto
+
+*.py    text diff=python
+*.md    text
+*.tex   text
+*.csv   text
+*.json  text
+*.cff   text
+*.txt   text
+
+# Binary assets
+*.xlsx  binary
+*.png   binary
+*.pdf   binary

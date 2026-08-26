@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: "If you use this dataset, encoding scheme, or code, please cite the article below."
+title: "IVF/ICSI live-birth prediction: curated dataset and HAN + LR ensemble"
+abstract: >-
+  Code, curated dataset documentation, and figures for a study developing a
+  Hybrid Attention Network plus logistic-regression ensemble to predict live
+  birth after fresh embryo transfer in IVF/ICSI, together with a differential
+  inner-cell-mass / trophectoderm weighting for encoding blastocyst morphology.
+type: software
+license: MIT
+authors:
+  - family-names: Shahzad
+    given-names: Abdul Raheem
+    affiliation: "School of Computer Science, Wuhan University, Wuhan, China"
+    email: abdul.raheem.colab@gmail.com
+  - family-names: Chen
+    given-names: Jinxin
+    affiliation: "Second Clinical Medical College, Zhongnan Hospital of Wuhan University, Wuhan, China"
+  - family-names: Zhang
+    given-names: Ming
+    affiliation: "Reproductive Medical Center, Zhongnan Hospital of Wuhan University, Wuhan, China"
+  - family-names: Deng
+    given-names: Juan
+    affiliation: "School of Computer Science, Wuhan University, Wuhan, China"
+keywords:
+  - clinical prediction model
+  - in vitro fertilization
+  - live birth
+  - tabular data
+  - attention networks
+  - ensemble learning
+preferred-citation:
+  type: article
+  title: >-
+    A curated single-centre dataset and a hybrid attention-logistic regression
+    ensemble for live-birth prediction after fresh embryo transfer in IVF/ICSI
+  authors:
+    - family-names: Shahzad
+      given-names: Abdul Raheem
+    - family-names: Chen
+      given-names: Jinxin
+    - family-names: Zhang
+      given-names: Ming
+    - family-names: Deng
+      given-names: Juan
+  year: 2026
+  journal: "Manuscript under review"

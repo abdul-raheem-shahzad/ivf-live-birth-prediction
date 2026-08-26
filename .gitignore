@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*~
+~$*
+
+# LaTeX build products
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.toc
+
+# Uncomment to keep the patient-level dataset out of the repository and load it
+# from a private path via the IVF_DATA_FILE environment variable instead.
+# data/*.xlsx

@@ -1,0 +1,364 @@
+%% !TeX program = xelatex
+%% ============================================================
+%%  REVIEW / INITIAL-SUBMISSION VERSION
+%%  Single column, double spaced, continuous line numbers, so that
+%%  reviewers can refer to exact lines. No journal pre-typesetting.
+%%  (The typeset two-column JAMIA version is in paper.tex.)
+%% ============================================================
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{lineno}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage{authblk}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage[super,comma,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+
+\doublespacing
+\linenumbers
+\renewcommand\linenumberfont{\normalfont\footnotesize\sffamily}
+
+\setlength{\affilsep}{0.35em}
+\renewcommand\Authfont{\normalsize}
+\renewcommand\Affilfont{\small\normalfont}
+\renewcommand\Authsep{, }
+\renewcommand\Authand{, }
+\renewcommand\Authands{, }
+
+\title{\bfseries A curated single-centre dataset and a hybrid attention--logistic
+regression ensemble for live-birth prediction after fresh embryo transfer in IVF/ICSI}
+
+\author[1,$\dagger$]{Abdul Raheem Shahzad}
+\author[2,$\dagger$]{Chen Jinxin}
+\author[3,4,*]{Ming Zhang}
+\author[1,*]{Juan Deng}
+\affil[1]{School of Computer Science, Wuhan University, Wuhan, China}
+\affil[2]{Second Clinical Medical College, Zhongnan Hospital of Wuhan University, Wuhan, China}
+\affil[3]{Reproductive Medical Center, Zhongnan Hospital of Wuhan University, Wuhan, Hubei, P.R. China}
+\affil[4]{Clinical Medicine Research Center of Prenatal Diagnosis and Birth Health in Hubei Province, Wuhan, Hubei, P.R. China}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{singlespace}
+\noindent$^{\dagger}$These authors contributed equally to this work and share first authorship.\\
+\noindent$^{*}$Corresponding authors: Ming Zhang (whu\_mz@163.com) and Juan Deng (dengjuan@whu.edu.cn).\\
+\noindent E-mail: Abdul Raheem Shahzad (abdul.raheem.colab@gmail.com; 2024272110002@whu.edu.cn);
+Chen Jinxin (chenjinxin@whu.edu.cn); Ming Zhang (whu\_mz@163.com); Juan Deng (dengjuan@whu.edu.cn)
+\end{singlespace}
+
+\vspace{1em}
+\section*{Abstract}
+\noindent\textbf{Objective.} Predicting live birth before fresh embryo transfer could support shared decision-making in IVF/ICSI, but routine clinical data are small, heterogeneous, and contain pathway-dependent variables prone to outcome leakage. We aimed to construct a curated single-centre IVF/ICSI dataset and develop a prediction model suited to small tabular clinical data.
+
+\noindent\textbf{Materials and Methods.} We assembled 616 fresh embryo-transfer cycles (251 live birth and 365 non-live birth cycles) with clinical, laboratory, and embryological predictors, and embryo morphology encoded with a novel differential weighting of the inner cell mass and trophectoderm. After KNN imputation, robust scaling, and selection of 50 features, we developed a Hybrid Attention Network (HAN), a learnable feature-attention gate followed by a compact multilayer perceptron, and a HAN + logistic-regression (LR) ensemble combining both probabilities with a validation-tuned weight. Models were benchmarked against classical machine learning, TabPFN, and text-serialized language models on a held-out test set with bootstrap confidence intervals; AUC-ROC was the primary metric.
+
+\noindent\textbf{Results.} The HAN + LR ensemble achieved the highest test AUC-ROC (0.717; accuracy 0.699, F1 0.622), ahead of the HAN backbone alone (0.700), logistic regression (0.680), the TabPFN + LR hybrid (0.665), and TabPFN (0.651). Text-serialized language models performed near chance (AUC $\le$ 0.61). Across models, the differentially weighted trophectoderm feature ranked highest by consensus importance, and embryo/laboratory and hormonal variables together accounted for 71.8\% of total importance.
+
+\noindent\textbf{Discussion.} A compact attention network combined with a linear model outperformed both components and strong foundation-model baselines on a small clinical cohort.
+
+\noindent\textbf{Conclusion.} The curated dataset and HAN + LR ensemble offer a transparent, reproducible basis for IVF/ICSI live-birth prediction; external multi-centre validation is the next step.
+
+\vspace{0.6em}
+\noindent\textbf{Keywords:} clinical prediction model; in vitro fertilization; live birth; tabular data; attention networks; ensemble learning.
+
+\newpage
+
+\section*{Background and Significance}
+
+Infertility affects roughly one in six adults worldwide, and assisted reproductive technology (ART), in particular in vitro fertilization (IVF) and intracytoplasmic sperm injection (ICSI), is now mainstream.\cite{who,hfea} Despite continued improvement in laboratory and clinical practice, the live-birth rate after a fresh embryo-transfer cycle remains modest, on the order of one in four, and varies substantially between patients.\cite{hfea,zhu}
+
+Because each cycle carries a considerable physical, emotional, and financial burden, an individualized estimate of live-birth probability before transfer would be clinically valuable, supporting counselling and shared decisions such as the number of embryos to transfer or whether to pursue a freeze-all strategy.\cite{stormlund,eshreEmb,asrmLimits}
+
+These decisions are made just before transfer, when the clinician already knows the patient's baseline characteristics, stimulation and laboratory results, and embryo morphology. A prediction delivered then, from information available up to that point, is directly actionable. This contrasts with tools estimating cumulative live birth over multiple cycles,\cite{ratna} which serve a longer-horizon purpose; our work targets the per-transfer decision point, matched to single-cycle structured data.
+
+Many prognostic models have been proposed in ART, but systematic reviews repeatedly identify two limitations: most are not externally validated, and many are at risk of bias under formal appraisal.\cite{henderson,ratna,andaur} Reporting frameworks such as TRIPOD+AI and PROBAST+AI address these gaps.\cite{tripod,probast} Much recent methodological energy has gone into image-based deep learning,\cite{mina,theilgaard,louis} whereas models built on the structured clinical data routinely captured during a cycle remain underexplored, even though such data exist in essentially every clinic.
+
+Tabular clinical data pose their own difficulties: cohorts are small relative to the appetite of modern neural networks, predictors are heterogeneous and partially missing, and several informative variables are pathway-dependent, being themselves consequences of earlier steps in the cycle (for example the number of usable embryos or their grade). Recent advances for tabular learning, including attention-based architectures such as TabNet and FT-Transformer, tabular foundation models such as TabPFN, and serialization approaches such as TabLLM,\cite{tabnet,fttrans,tabpfnIclr,tabllm} are rarely evaluated head-to-head for IVF live-birth prediction on a single, transparently curated cohort.
+
+This motivates three contributions: (1) a curated single-centre IVF/ICSI dataset for live-birth prediction; (2) a novel numerical encoding of embryo morphology that assigns differential weights to the inner cell mass and trophectoderm of the blastocyst, in place of the equal weighting implicit in conventional Gardner grading; and (3) a prediction model purpose-built for small tabular clinical data and benchmarked against contemporary baselines.
+
+
+
+\section*{Related Studies}
+
+\subsection*{Datasets for IVF outcome prediction}
+
+Research on IVF outcome prediction draws on two data sources. National registries such as the Human Fertilisation and Embryology Authority (United Kingdom) and SART CORS (United States) offer large samples but capture only a standardized variable set, lacking clinic-level laboratory and embryo detail,\cite{hfea,sartCors,kupka} whereas single-centre datasets are rich but small, heterogeneous, and affected by missing values. A parallel line of work has released image and time-lapse embryo datasets,\cite{gomez,annotatedBlast,theilgaard} which target embryo grading rather than cycle-level prediction from structured data. Registry-scale studies have predicted live birth from such databases,\cite{naturalCycle,huang} and large image corpora have been released for benchmarking.\cite{artDataset,femi} Our dataset sits in the second group: a curated single-centre collection in which morphology grades are numerically encoded and combined with clinical and laboratory predictors.
+
+\subsection*{Traditional machine-learning approaches}
+
+Classical machine learning has been applied repeatedly to IVF/ICSI outcome prediction, where logistic regression remains a strong baseline,\cite{liu,goyal} and tree-based methods (decision trees, random forests, gradient boosting) have modelled pregnancy and live-birth outcomes.\cite{fu,bai,hassan} Reported discrimination varies with cohort and outcome definition, large-cohort studies often reporting AUCs of 0.70 to 0.80\cite{goyal,huang} and single-centre live-birth studies lower and more variable. Broader reviews survey the algorithms used across ART.\cite{ranjini,raef,kim} Systematic reviews caution that many models use modest samples, are rarely externally validated, and omit calibration.\cite{henderson,ratna,andaur,wu}
+
+\subsection*{Deep learning, foundation models, and language models}
+
+Deep learning has entered along two strands. The dominant, image-based strand trains convolutional models on embryo images for grading and selection,\cite{theilgaard,louis,huang,delestro} including foundation models\cite{femi} and pipelines localizing informative time points,\cite{dlPipeline,dlEmbryoSel} with reviews charting laboratory adoption\cite{riegler,hew,salih} and work on male-factor assessment\cite{qaderi} and IVF-laboratory automation.\cite{fernandez,siristatidis} The second strand, to which this work belongs, applies deep and transformer models to tabular data: TabNet and FT-Transformer brought attention to tabular learning,\cite{tabnet,fttrans} tabular foundation models such as TabPFN give in-context prediction for small datasets,\cite{tabpfnIclr,tabpfnNat} and language models have been adapted by serializing records into text.\cite{tabllm} Evidence is mixed: recent benchmarks find well-tuned classical models still match or exceed foundation models on clinical tabular tasks,\cite{benchmark} underscoring the value of head-to-head evaluation on a single curated cohort.
+
+Two gaps follow. First, structured-data, cycle-level live-birth prediction is under-studied relative to image-based embryo selection. Second, modern tabular model families are rarely benchmarked against one another on the same IVF cohort under a consistent endpoint and transparent pipeline. This study addresses both.
+
+\subsection*{Objective}
+
+We set out to (1) construct and characterize a curated dataset of fresh embryo-transfer IVF/ICSI cycles with a binary live-birth label; (2) introduce a differential weighting of the inner cell mass and trophectoderm for numerically encoding blastocyst morphology; and (3) develop and evaluate a Hybrid Attention Network plus logistic-regression (HAN + LR) ensemble for live-birth prediction, benchmarking it against classical machine learning, a tabular foundation model, and text-serialized language models.
+
+\section*{Materials and Methods}
+
+\subsection*{Data source and study cohort}
+
+We retrospectively assembled clinical data from patients who underwent fresh IVF/ICSI embryo-transfer cycles at the Reproductive Medicine Center of Zhongnan Hospital, Wuhan University, between February 2018 and November 2025. Each treatment cycle constitutes one sample. The curated dataset comprises 616 cycles. The study was approved by the Ethics Committee of Zhongnan Hospital of Wuhan University (Ethical Approval No. 2025346K); given the retrospective design, the requirement for informed consent was waived. Table~\ref{tab::cohort} reports the baseline characteristics of both outcome groups together with the modelling status of every collected variable.
+
+\IfFileExists{table1.tex}{\input{table1.tex}}{%
+  \begin{table}[H]\centering\fbox{\parbox{0.9\columnwidth}{\centering\footnotesize
+  \textbf{Table 1} --- add \texttt{table1.tex}\\[2pt]
+  (generated by \texttt{make\_table1.py})}}
+  \caption{Baseline characteristics by outcome group.}\label{tab::cohort}\end{table}}
+
+\subsection*{Outcome definition}
+
+The prediction target was live birth, defined as the delivery of one or more living infants after at least 24 weeks of gestation, in line with standard fertility-care glossaries,\cite{zegers} versus non-live birth; cycles were accordingly assigned to the live birth group or the non-live birth group, and this binary outcome served as the label for all models.
+
+\subsection*{Predictors and embryo-morphology encoding}
+
+Candidate predictors were organized into the four clinical domains used throughout this paper and in Table~\ref{tab::cohort}. Female factors comprised age, height, weight, body-mass index, smoking history, duration of infertility, the basal, Gn-start-day and trigger-day hormonal profile (follicle-stimulating and luteinizing hormone, estradiol, progesterone, prolactin, testosterone, anti-Mullerian and thyroid-stimulating hormone), and trigger-day endometrial thickness. Male factors comprised age, height, weight, body-mass index, smoking history, serum follicle-stimulating and luteinizing hormone, prolactin and testosterone, and semen parameters (concentration, progressive and non-progressive motility, immotility, normal morphology, DNA fragmentation index). Stimulation and laboratory variables comprised the ovarian-stimulation protocol, broadly consistent with guideline practice,\cite{eshreStim} the method of fertilization, the duration of gonadotropin stimulation, the total gonadotropin, follicle-stimulating hormone, menopausal gonadotropin and luteinizing hormone doses, and the trigger type and dose. Oocyte-retrieval and embryo-development variables comprised the numbers of punctured follicles, retrieved and MII oocytes, 2PN and multipronuclear zygotes, high-quality embryos, embryos available at day 3, blastocyst-cultured embryos and blastocysts formed, with the type and number of embryos transferred and the encoded morphology. Embryo morphology, recorded as qualitative grades, was converted into numerical features using the Peter system for cleavage-stage embryos and the Gardner system for blastocysts, so that morphology could be used directly irrespective of transfer stage, an issue of ongoing debate.\cite{glujovsky}
+
+\subsection*{A differential ICM/TE weighting for blastocyst grading}
+
+A specific methodological contribution of this work concerns how embryo morphology is encoded. The raw morphology text, describing one or two transferred embryos in either the Gardner blastocyst system (expansion, inner cell mass [ICM], trophectoderm [TE]) or the cleavage-stage system (grade and cell number), was converted into ten numeric columns, with separate slots for up to two embryos and for the two systems. Blastocyst ICM and TE letters were mapped A/B/C to 3/2/1 and cleavage Roman grades I-IV to 4-1. Rather than treat ICM and TE as equally informative, as conventional Gardner grading implicitly does, we weight them differentially: informed by a correlation analysis in this cohort, in which TE was more strongly associated with live birth than ICM, the composite stores ICM at half weight and TE at full weight (ICM $\times$ 0.5, TE $\times$ 1.0). This resolves the ambiguity between blastocysts sharing an expansion stage but with mirror-image grades, ranking the TE-superior 4BA above 4AB. Two further non-monotonic facts are captured by inverted-U optimality scores: cleavage cell count (best around eight cells) and blastocyst expansion (best at intermediate stages). The weighting is applied during dataset construction, giving models a more expressive morphology feature than an equal-weight grade sum; the TE-weighted feature was among the 50 selected and, in cross-checks, among the most influential. Figure~\ref{fig::encoding} summarizes the encoding scheme.
+
+\begin{figure}[tb]
+    \centering
+    \IfFileExists{figures/fig_encoding_scheme.pdf}{\includegraphics[width=0.82\textwidth]{figures/fig_encoding_scheme.pdf}}{\fbox{\begin{minipage}[c][3.6cm][c]{0.86\columnwidth}\centering\textbf{Figure} --- add \texttt{figures/fig\_encoding\_scheme.pdf}\par\smallskip\footnotesize embryo morphology encoding scheme\end{minipage}}}
+    \caption{Diagram of the embryo morphology encoding scheme.}
+    \label{fig::encoding}
+\end{figure}
+
+\subsection*{Preprocessing and feature selection}
+
+Records were cleaned to coerce stray text entries to missing values. To prevent leakage, all fitting was confined to the training split: numerical variables were imputed with a k-nearest-neighbour imputer (k = 5) and scaled with a robust scaler (median and interquartile range). Female weight was dropped as collinear with body-mass index, and categorical variables were one-hot encoded with the first level as reference. This produced 76 candidate features (61 numerical, including the ten embryo columns above, plus 15 one-hot dummies from 8 categoricals), from which the 50 most informative were retained using univariate selection (SelectKBest with the ANOVA F-statistic), fit on the training split only, a deliberately simple, transparent filter suited to a small cohort. The same preprocessed feature set and the same stratified partition were used for every model, so that performance differences reflect the models rather than differences in data handling. The modelling status of every collected variable, alongside its distribution in each outcome group, is recorded in Table~\ref{tab::cohort}.
+
+\subsection*{Model: Hybrid Attention Network and the HAN + LR ensemble}
+
+The HAN backbone has two stages. A Feature Attention Module first applies a global, dataset-level learnable importance gate: a weight vector is passed through a sigmoid and multiplied element-wise with the input features, allowing the network to up- or down-weight predictors. Unlike per-sample attention in large transformers, this gate is shared across the cohort, keeping the parameter count low and suiting a small clinical dataset. The gated features then pass through a compact multilayer perceptron (50$\rightarrow$24 with layer normalization, ReLU, and dropout 0.25; 24$\rightarrow$12 with ReLU and dropout 0.15; 12$\rightarrow$1 with a sigmoid), yielding a live-birth probability. Each HAN instance contains approximately 1,635 trainable parameters. To reduce variance from random initialization, the backbone is realized as an ensemble of three independently seeded instances whose probabilities are averaged.
+
+The proposed model combines the HAN backbone with an L2-regularized logistic-regression (LR) model trained on the same features. The final probability is a convex combination p = w$\cdot$p\_HAN + (1$-$w)$\cdot$p\_LR, with the mixing weight selected by a grid search that maximized validation AUC. The search selected w = 0.70, weighting the attention backbone more heavily than the linear model, reflecting that the HAN backbone was the stronger of the two components on this cohort while logistic regression still contributed complementary structure. Counting all components, the ensemble comprises 4,957 parameters (three HAN instances, the LR model, and the mixing weight).
+
+
+
+
+
+\subsection*{Training configuration}
+
+HAN instances were trained by minimizing binary cross-entropy with the AdamW optimizer (learning rate 0.002, weight decay 0.001), for up to 80 epochs with a batch size of 32, using Xavier initialization, gradient clipping at a maximum norm of 1.0, and early stopping on the best validation AUC. Key settings are summarized in Table~\ref{tab::config}.
+
+\begin{table}[H]
+\setlength{\abovecaptionskip}{5pt}
+\caption{HAN\,+\,LR architecture and training configuration.}
+\label{tab::config}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.30\textwidth}p{0.63\textwidth}@{}}
+\toprule
+\textbf{Component} & \textbf{Setting} \\
+\midrule
+Feature Attention Module & Learnable per-feature gate, sigmoid, element-wise multiplicative \\
+MLP layers & $50\rightarrow24$ (LayerNorm, ReLU, dropout 0.25); $24\rightarrow12$ (ReLU, dropout 0.15); $12\rightarrow1$ (sigmoid) \\
+HAN ensemble & 3 seeds (42, 123, 456), probabilities averaged \\
+Parameters & $\approx$1,635 per HAN instance; 4,957 total \\
+Ensemble rule & $p = w\,p_{\mathrm{HAN}} + (1-w)\,p_{\mathrm{LR}}$; $w=0.70$ by validation grid search \\
+Optimizer / loss & AdamW (lr 0.002, weight decay 0.001); binary cross-entropy \\
+Schedule & $\le$80 epochs, batch 32, early stopping on validation AUC \\
+Stability & Xavier initialization; gradient clipping at max-norm 1.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Comparator models}
+
+We compared the HAN + LR ensemble with: classical machine-learning models (logistic regression, random forest, gradient boosting, support-vector machine, k-nearest neighbours, naive Bayes, and XGBoost); a tabular foundation model (TabPFN) and a TabPFN + LR hybrid; and a family of pre-trained language models adapted to tabular data by text serialization, in which each record is rendered as a natural-language string of feature–value pairs and embedded (MiniLM, DistilBERT, BERT, ELECTRA, and RoBERTa).\cite{tabpfnIclr,tabllm} Classical models used standard, lightly tuned configurations; the TabPFN + LR hybrid used the same validation-tuned weighting as the proposed ensemble, so that only the neural component differs. The language-model pipeline used one fixed serialization template across all encoders.
+
+\subsection*{Evaluation}
+
+Data were partitioned by stratified sampling into 523 training and 93 held-out test cycles (approximately 85\% and 15\%), preserving the class ratio. Cross-validation within the training set was used for model selection and tuning, including the ensemble mixing weight; final performance was reported on the held-out test set. The primary metric was the area under the receiver-operating-characteristic curve (AUC-ROC), which is threshold-independent and appropriate for a moderately imbalanced binary outcome; accuracy, precision, recall, and F1 were reported as secondary metrics at the default 0.5 decision threshold. Bootstrap resampling of the test set was used to characterize the stability of the estimates. Reporting follows the TRIPOD+AI checklist.\cite{tripod}
+
+\section*{Results}
+
+\subsection*{Cohort}
+
+The curated cohort comprised 616 fresh embryo-transfer cycles, partitioned into 523 training and 93 test cycles (of which 38 were live births). The live birth group was the minority (251 cycles, 40.7\%) and the non-live birth group the majority (365 cycles, 59.3\%); we preserved this ratio by stratified sampling rather than applying explicit resampling. Baseline characteristics by outcome group are given in Table~\ref{tab::cohort}.
+
+The 50 selected features spanned all four predictor domains (Table~\ref{tab::cohort}) but were dominated by oocyte-retrieval and embryo-development variables and by the female hormonal profile. This composition is clinically coherent, since embryo quality and yield are among the strongest correlates of transfer success, but it also signals the pathway-dependence discussed below.
+
+
+
+\subsection*{Primary model comparison}
+
+Across the eleven models evaluated on the held-out test set, the HAN + LR ensemble achieved the highest AUC-ROC (0.717), with an accuracy of 0.699 and F1 of 0.622 (Table~\ref{tab::results}). It outperformed the HAN backbone evaluated alone (0.700), the strongest classical baseline logistic regression (0.680), the TabPFN + LR hybrid (0.665), and standalone TabPFN (0.651). The remaining models (support-vector machine, XGBoost, k-nearest neighbours, gradient boosting, naive Bayes, and random forest) trailed with AUC-ROC between 0.56 and 0.63; receiver-operating-characteristic curves for the models are shown in Figure~\ref{fig::roc}.
+
+\begin{table}[H]
+\setlength{\abovecaptionskip}{5pt}
+\caption{Test-set performance of the eleven evaluated models, ranked by AUC-ROC. Higher is better for all metrics.}
+\label{tab::results}
+\centering
+\resizebox{0.86\textwidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model} & \textbf{AUC} & \textbf{Acc} & \textbf{Prec} & \textbf{Rec} & \textbf{F1} \\
+\midrule
+\textbf{HAN\,+\,LR (proposed)} & \textbf{0.717} & 0.699 & 0.639 & 0.605 & 0.622 \\
+HAN backbone (alone) & 0.700 & 0.645 & 0.571 & 0.526 & 0.548 \\
+Logistic regression & 0.680 & 0.645 & 0.558 & 0.632 & 0.593 \\
+TabPFN\,+\,LR & 0.665 & 0.645 & 0.619 & 0.342 & 0.441 \\
+TabPFN & 0.651 & 0.624 & 0.588 & 0.263 & 0.364 \\
+Support-vector machine & 0.628 & 0.634 & 0.625 & 0.263 & 0.370 \\
+XGBoost & 0.626 & 0.613 & 0.533 & 0.421 & 0.471 \\
+$k$-nearest neighbours & 0.623 & 0.645 & 0.586 & 0.447 & 0.508 \\
+Gradient boosting & 0.616 & 0.602 & 0.522 & 0.316 & 0.393 \\
+Na\"ive Bayes & 0.593 & 0.570 & 0.486 & 0.895 & 0.630 \\
+Random forest & 0.560 & 0.624 & 0.600 & 0.237 & 0.340 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Two observations are notable. First, the HAN + LR ensemble improved on its own components by +0.017 AUC over the HAN backbone (0.700) and +0.037 over logistic regression (0.680); the gain is modest but consistent, and the HAN backbone alone again outperformed logistic regression and every other single model, ranking second only to the hybrid. Second, unlike the HAN backbone, the tabular foundation model did not help the linear model: standalone TabPFN reached only 0.651 and the TabPFN + LR hybrid 0.665, both below logistic regression (0.680), so the complementary signal came specifically from pairing the linear model with the attention backbone rather than a foundation model.
+
+The threshold-dependent secondary metrics highlight different operating behaviours that AUC-ROC alone conceals. Naive Bayes sat at one extreme, with high recall (0.895) but low precision (0.486), flagging most cases as live births, whereas random forest, the support-vector machine, and TabPFN sat at the opposite extreme, with higher precision but low recall. Logistic regression balanced the two (precision 0.558, recall 0.632), and the HAN + LR ensemble offered the most balanced profile among the leading models (precision 0.639, recall 0.605). Because these metrics use a fixed 0.5 threshold, they are sensitive to the operating point and to sampling variation; AUC-ROC is therefore the more reliable basis for ranking, and the bootstrap intervals around them were wide.
+
+\begin{figure}[tb]
+    \centering
+    \IfFileExists{figures/fig_roc_curves.pdf}{\includegraphics[width=0.82\textwidth]{figures/fig_roc_curves.pdf}}{\fbox{\begin{minipage}[c][3.6cm][c]{0.86\columnwidth}\centering\textbf{Figure} --- add \texttt{figures/fig\_roc\_curves.pdf}\par\smallskip\footnotesize AUC-ROC curves\end{minipage}}}
+    \caption{Receiver-operating-characteristic (AUC-ROC) curves for the evaluated models on the held-out test set.}
+    \label{fig::roc}
+\end{figure}
+
+\subsection*{Feature importance across models}
+
+To characterize which predictors each model relied on, we extracted each model's native importance measure: Gini importance (random forest), Friedman MSE improvement (gradient boosting), gain-based weight (XGBoost), absolute coefficient magnitude (logistic regression), and the learned attention weights (HAN). Because these live on different scales, we min-max scaled them within each model and averaged the normalized values into a consensus ranking (Table~\ref{tab::importance}, Figures~\ref{fig::importance} and~\ref{fig::bymodel}).
+
+
+\begin{table}[t]
+\setlength{\abovecaptionskip}{5pt}
+\caption{Top 15 predictors by consensus importance, with the native importance reported by each model. Variable names and clinical domains follow Table~\ref{tab::cohort}. Values are Gini importance (random forest), Friedman MSE improvement (gradient boosting), gain-based weight (XGBoost), absolute coefficient magnitude (logistic regression), and the learned attention weight (HAN). Note the differing native scales, and in particular the narrow range of the HAN attention weights.}
+\label{tab::importance}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.235\textwidth}>{\raggedright\arraybackslash}p{0.215\textwidth}>{\raggedleft\arraybackslash}p{0.085\textwidth}rrrrr@{}}
+\toprule
+\textbf{Feature} & \textbf{Domain} & \textbf{Consensus (\%)} & \textbf{RF} & \textbf{GB} & \textbf{XGB} & \textbf{LR} & \textbf{HAN} \\
+\midrule
+Blastocyst 1 TE (weighted) & Oocyte retrieval and embryo development & 4.50 & 0.007 & 0.015 & 0.017 & 1.198 & 0.521 \\
+Ovarian stimulation protocol (Extra Long Plan) & Stimulation and laboratory & 3.25 & 0.001 & 0.000 & 0.000 & 0.728 & 0.541 \\
+Method of fertilization (IVF+RICSI) & Stimulation and laboratory & 2.80 & 0.000 & 0.000 & 0.000 & 0.569 & 0.525 \\
+Number of follicles punctured & Oocyte retrieval and embryo development & 2.64 & 0.024 & 0.014 & 0.014 & 0.456 & 0.525 \\
+Cleavage embryo 1 grade & Oocyte retrieval and embryo development & 2.63 & 0.003 & 0.000 & 0.000 & 0.501 & 0.522 \\
+Cleavage embryo 2 grade & Oocyte retrieval and embryo development & 2.56 & 0.006 & 0.017 & 0.012 & 0.436 & 0.531 \\
+Number of oocytes retrieved & Oocyte retrieval and embryo development & 2.56 & 0.021 & 0.015 & 0.021 & 0.408 & 0.536 \\
+Female Gn-start-day P (ng/mL) & Female factors & 2.53 & 0.035 & 0.051 & 0.044 & 0.304 & 0.556 \\
+Female age (years) & Female factors & 2.43 & 0.026 & 0.021 & 0.017 & 0.346 & 0.540 \\
+Female BMI (kg/m$^2$) & Female factors & 2.34 & 0.041 & 0.046 & 0.047 & 0.251 & 0.530 \\
+Sperm DFI (\%) & Male factors & 2.28 & 0.037 & 0.035 & 0.043 & 0.253 & 0.522 \\
+Blastocyst 1 expansion quality & Oocyte retrieval and embryo development & 2.27 & 0.006 & 0.000 & 0.000 & 0.361 & 0.521 \\
+Blastocyst 1 ICM (weighted) & Oocyte retrieval and embryo development & 2.25 & 0.005 & 0.001 & 0.000 & 0.350 & 0.521 \\
+Male serum PRL (ng/mL) & Male factors & 2.22 & 0.036 & 0.031 & 0.037 & 0.249 & 0.516 \\
+Number of blastocysts formed & Oocyte retrieval and embryo development & 2.21 & 0.021 & 0.005 & 0.011 & 0.313 & 0.512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[tb]
+    \centering
+    \IfFileExists{figures/fig_feature_importance.pdf}{\includegraphics[width=0.82\textwidth]{figures/fig_feature_importance.pdf}}{\fbox{\begin{minipage}[c][3.6cm][c]{0.86\columnwidth}\centering\textbf{Figure} --- add \texttt{figures/fig\_feature\_importance.pdf}\par\smallskip\footnotesize consensus feature importance\end{minipage}}}
+    \caption{Top 15 predictors by consensus importance, averaged across the five models that expose an importance measure and coloured by the clinical domains defined in Table~\ref{tab::cohort}.}
+    \label{fig::importance}
+\end{figure}
+
+Three patterns emerged. First, the differentially weighted blastocyst trophectoderm feature (Blastocyst 1 TE) was the highest-ranked predictor overall (4.50\% of consensus importance) and carried by far the largest logistic-regression coefficient, which supports the encoding scheme introduced above; the weighted Blastocyst 1 ICM feature, the cleavage embryo grades, and the blastocyst expansion-quality score also appeared among the top 15. Second, the models disagreed markedly about which predictors matter (Figure~\ref{fig::bymodel}). The tree ensembles concentrated importance on continuous physiological variables, chiefly female BMI, sperm DFI, female Gn-start-day progesterone, and male serum prolactin, while assigning almost no importance to the one-hot categorical indicators; logistic regression showed the opposite emphasis, ranking the categorical stimulation and laboratory indicators and the embryo-morphology features highest. This divergence is expected: axis-aligned trees split poorly on sparse binary dummies whereas a linear model can assign them large coefficients, so a single-model ranking would mislead. Third, the HAN attention weights spanned only 0.51 to 0.56 across all 50 features, indicating mild global re-weighting rather than sharp feature selection; the ordering it induces should not be over-interpreted.
+
+\begin{figure}[tb]
+    \centering
+    \IfFileExists{figures/fig_importance_by_model.pdf}{\includegraphics[width=0.82\textwidth]{figures/fig_importance_by_model.pdf}}{\fbox{\begin{minipage}[c][3.6cm][c]{0.86\columnwidth}\centering\textbf{Figure} --- add \texttt{figures/fig\_importance\_by\_model.pdf}\par\smallskip\footnotesize per-model importance heatmap\end{minipage}}}
+    \caption{Relative importance of each of the top 15 predictors within each model, min-max scaled per model so that differently scaled measures can be compared. Scaling amplifies the narrow spread of the HAN attention weights and should be read as ordering, not magnitude.}
+    \label{fig::bymodel}
+\end{figure}
+
+Aggregated by the same four clinical domains used in Table~\ref{tab::cohort}, oocyte-retrieval and embryo-development variables contributed the largest share of consensus importance, with the remainder distributed across female factors, stimulation and laboratory variables, and male factors (Figure~\ref{fig::category}).
+
+\begin{figure}[tb]
+    \centering
+    \IfFileExists{figures/fig_category_importance.pdf}{\includegraphics[width=0.82\textwidth]{figures/fig_category_importance.pdf}}{\fbox{\begin{minipage}[c][3.6cm][c]{0.86\columnwidth}\centering\textbf{Figure} --- add \texttt{figures/fig\_category\_importance.pdf}\par\smallskip\footnotesize category importance\end{minipage}}}
+    \caption{Share of total consensus importance contributed by each of the four clinical domains defined in Table~\ref{tab::cohort}, with the number of selected features in each domain.}
+    \label{fig::category}
+\end{figure}
+
+\subsection*{Ablation}
+
+Module-level ablations on the validation folds were consistent with the design choices. Removing the Feature Attention Module reduced validation AUC relative to the full backbone, supporting the contribution of the learned importance gate; the chosen dropout configuration (0.25 and 0.15) outperformed both no-dropout and heavier-dropout settings; and the grid search over mixing weights favoured a HAN-weighted combination (w = 0.7) over more balanced settings (w = 0.5 and w = 0.3 were lower on validation).
+
+\subsection*{Cross-validation stability}
+
+The test-set ranking was consistent with the cross-validation used for model selection: the HAN + LR ensemble and the HAN backbone led under both, and the tree- and distance-based models trailed in both. This agreement, with three-seed averaging, supports the stability of the ordering, though absolute values carry wide confidence intervals at this cohort size.
+
+\subsection*{Language-model baselines}
+
+Adapting pre-trained language models by text serialization was not competitive: the best reached an AUC of about 0.61, well below the classical and ensemble models, indicating that at this cohort size general-purpose text encoders do not capture the structured clinical signal as effectively as models operating on the tabular features directly.
+
+\section*{Discussion}
+
+On a small, real-world IVF/ICSI cohort, a compact attention network combined with logistic regression predicted live birth more accurately than either component alone and than foundation-model and language-model baselines. The attention backbone was the stronger single component, the linear model contributed complementary structure, and a HAN-weighted average (w = 0.7) gave the best and most stable prediction. That combining logistic regression with the HAN backbone helped while combining it with TabPFN did not suggests the benefit comes from genuine diversity between the two models rather than from ensembling per se.
+
+These findings match a broader literature reporting that, on small clinical tabular datasets, well-regularized classical models remain competitive with, and often superior to, elaborate deep architectures,\cite{tabpfnNat,benchmark} and that careful feature engineering matters more than raw capacity. They also complement the predominantly image-based ART literature\cite{mina,theilgaard,louis} by showing what is achievable from routinely captured structured data alone, aligning with work on advanced machine-learning paradigms for IVF prognostication\cite{catalyzing} and with calls to weigh practical implementation considerations alongside raw accuracy.\cite{swain}
+
+The absolute discrimination achieved (AUC-ROC around 0.68 to 0.72) is in the range that is plausible, and arguably honest, for a strict live-birth endpoint predicted before transfer from a single-centre cohort. Studies built on large registries sometimes report higher figures,\cite{goyal,huang} but they often predict easier endpoints, benefit from larger samples, or omit external validation; conversely, optimistic results in small studies frequently reflect leakage or the absence of a held-out test set. We aimed for a realistic rather than a maximal estimate of performance.
+
+The choice of a hybrid was deliberate. A single large neural network overfits on a few hundred samples, while a purely linear model cannot capture interactions. Combining a compact attention network with logistic regression lets the convex combination act as a regularizer, which proved more effective than either component alone and than pairing the linear model with a foundation model. For small clinical cohorts, combining complementary simple models appears a more dependable route to robust performance than scaling up a single architecture.
+
+The differential ICM/TE weighting is, to our knowledge, a novel encoding choice for this prediction task. Conceptually it resolves the tie between discordant blastocysts (for example 4AB versus 4BA) that equal-weight Gardner scoring cannot, and the TE-dominant weighting we found is consistent with evidence that trophectoderm quality is a strong correlate of implantation and live birth. We stress, however, that the association of the composite score with live birth was weak in absolute terms and that the weights were tuned on a single cohort; the scheme should therefore be regarded as a transparent, promising encoding to be validated externally rather than as a settled clinical scoring rule.
+
+Within these limits, the study contributes a transparently described dataset and a reproducible model competitive with modern baselines while small enough (under 5,000 parameters) to train and audit easily.\cite{tripod,probast}
+
+The compactness of the model is itself a practical advantage: the ensemble trains in minutes on a single workstation and needs no specialized hardware at inference, lowering the barrier to local re-training and audit as regulators move toward lifecycle oversight of AI in reproductive medicine.\cite{medenica,guell}
+
+Before any clinical use, two steps are essential beyond discrimination. First, the probabilities should be formally calibrated, since a well-discriminating model can still be poorly calibrated and calibrated probabilities are what a counselling clinician needs. Second, the decision threshold should reflect the clinical costs of false positives and negatives rather than defaulting to 0.5. Both, with prospective evaluation, form part of the planned external-validation work.
+
+\subsection*{Clinical interpretation of the leading predictors}
+
+The predictors carrying the most weight are clinically coherent, supporting the model's face validity even though the analysis is associative. The leading role of the weighted trophectoderm grade agrees with evidence that trophectoderm quality tracks implantation and live birth at least as closely as the inner cell mass, and is the empirical counterpart of the encoding decision described above. The prominence of Gn-start-day progesterone matches the established observation that premature progesterone elevation compromises endometrial receptivity and depresses fresh-transfer success, motivating freeze-all strategies in affected cycles. Female age and body-mass index are firmly established determinants of oocyte competence, and the counts of punctured follicles, retrieved oocytes, and blastocysts index ovarian response and the size of the embryo cohort available for selection. Notably, two male factors, sperm DFI and serum prolactin, ranked highly in the tree ensembles, echoing a growing literature that paternal factors contribute measurably to live birth yet are under-represented in prediction models.
+
+Two cautions attach. First, several of these variables are pathway-dependent: embryo counts and morphology are products of earlier steps in the same cycle, so their predictive value does not imply that intervening on them would change the outcome. Second, the disagreement between model families means no single ranking is definitive; we report the consensus and per-model detail so this uncertainty stays visible.
+
+\section*{Limitations}
+
+Several limitations should be acknowledged. First, the dataset is single-centre and of modest size, which bounds generalizability and inflates the variance of subgroup estimates; external, multi-centre validation is required before any clinical use. Second, the design is retrospective. Third, the endpoint is binary live birth, which does not capture the full outcome pathway (e.g. biochemical pregnancy, clinical pregnancy, miscarriage). Fourth, the language-model baselines were evaluated with a single serialization scheme and may improve with more elaborate prompting or fine-tuning. Finally, our reliance on univariate feature selection and a single centre means the selected feature set may not transfer unchanged to other populations, and the importance analysis is associative and model-dependent rather than causal.
+
+\section*{Conclusion}
+
+We developed a curated single-centre IVF/ICSI dataset, a differential ICM/TE encoding of blastocyst morphology that separates discordant grades which conventional equal-weight Gardner scoring cannot, and a HAN + LR ensemble for live-birth prediction after fresh embryo transfer. The ensemble achieved the best discrimination among eleven models, exceeding both its own components and contemporary tabular foundation-model and language-model baselines, while remaining compact and reproducible. The dataset, the encoding scheme, and the model provide a foundation for the next step, prospective, multi-centre external validation, which is necessary before such a tool can responsibly inform patient care.
+
+%==============================
+\section*{Funding}
+This research received no specific grant from any funding agency in the public, commercial, or not-for-profit sectors.
+
+\section*{Data availability}
+The datasets generated or analyzed during the current study are available from the corresponding authors on reasonable request.
+
+\section*{Ethics approval and consent to participate}
+This study was approved by the Ethics Committee of Zhongnan Hospital of Wuhan University (Ethical Approval No. 2025346K). Due to the retrospective nature of the study, the requirement for informed consent was waived by the Ethics Committee.
+
+\section*{Conflict of interest}
+The authors report no conflicts of interest.
+
+%==============================
+
+\bibliographystyle{vancouver}
+{\footnotesize \bibliography{citation}}
+
+\end{document}

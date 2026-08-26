@@ -1,0 +1,21 @@
+# Pinned to the environment that produced the results in results/ and figures/.
+# Verified on Python 3.12.7 (Windows, CPU).
+#
+# IMPORTANT: pandas must be < 3.0. From pandas 3.0 onward, Series.astype(str)
+# no longer renders missing values as the literal string "nan", so the
+# informative "..._nan" one-hot dummies documented in
+# docs/dataset_encoding_documentation.md are not created. The feature matrix
+# then has 74 columns instead of 76 and the reported numbers will not reproduce.
+
+numpy==2.3.4
+pandas==2.3.3
+scikit-learn==1.6.1
+scipy==1.16.0
+torch==2.7.1
+matplotlib==3.10.6
+openpyxl==3.1.5
+
+# Optional. Without it, models 8 and 9 (TabPFN, TabPFN + LR) fall back to a
+# constant 0.5 probability and are reported with AUC-ROC 0.500; every other
+# model is unaffected.
+tabpfn==2.2.1

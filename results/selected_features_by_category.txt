@@ -1,0 +1,61 @@
+50 selected features (SelectKBest, f_classif)
+
+[Embryo / Lab]  (19)
+  - blast_e1_TE_w
+  - Number of follicles punctured
+  - clv_e1_grade
+  - clv_e2_grade
+  - Number of oocytes retrieved
+  - blast_e1_exp_quality
+  - blast_e1_ICM_w
+  - Number of blastocysts formed
+  - Number of embryos available at D3
+  - Number of 2PN zygotes
+  - Number of MII oocytes
+  - Number of cleavage-stage embryos transferred_2.0
+  - clv_e1_cell_quality
+  - Number of blastocyst-cultured embryos
+  - clv_e2_cell_quality
+  - Types of embryos transferred_Cleavage stage embryo
+  - Number of blastocysts transferred_nan
+  - Number of cleavage-stage embryos transferred_nan
+  - Number of high-quality embryos
+
+[Female Factors]  (3)
+  - Female age (years)
+  - Female BMI (kg/m²)
+  - Female height (cm)
+
+[Hormone Levels]  (17)
+  - Female Gn-start-day P (ng/mL)
+  - Male serum PRL (ng/mL)
+  - Female Gn-start-day LH (mIU/mL)
+  - Total FSH dose (IU)
+  - Female Gn-start-day FSH (mIU/mL)
+  - Female trigger-day E2 (pg/mL)
+  - Total Gn dose (IU)
+  - Female Gn-start-day E2 (pg/mL)
+  - Female AMH (ng/mL)
+  - Female basal FSH (mIU/mL)
+  - Female basal T (ng/mL)
+  - Female trigger-day LH (mIU/mL)
+  - Male serum LH (mIU/mL)
+  - Female basal LH (mIU/mL)
+  - Duration of Gn stimulation (days)
+  - Total LH dose (IU)
+  - Recombinant hCG trigger dose (µg)
+
+[Male Factors]  (6)
+  - Sperm DFI (%)
+  - Progressive motility (PR, %)
+  - Male weight (kg)
+  - Male BMI (kg/m²)
+  - Male age (years)
+  - Immotility (IM, %)
+
+[Treatment / Other]  (5)
+  - Ovarian stimulation protocol_Extra Long Plan
+  - Method of fertilization_IVF+RICSI
+  - Trigger-day endometrial thickness (mm)
+  - Method of fertilization_IVF
+  - Ovarian stimulation protocol_Long protocol for early follicular phase
