@@ -1,4 +1,4 @@
-# Live-birth prediction after fresh embryo transfer in IVF/ICSI
+# Live-birth prediction after fresh embryo transfer in IVF/ICSI:
 
 Code, data documentation, and figures for **"A curated single-centre dataset and a
 hybrid attention–logistic regression ensemble for live-birth prediction after fresh
