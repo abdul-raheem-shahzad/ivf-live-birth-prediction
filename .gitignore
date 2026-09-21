@@ -26,6 +26,9 @@ paper/*.fdb_latexmk
 paper/*.fls
 paper/*.toc
 
-# Uncomment to keep the patient-level dataset out of the repository and load it
-# from a private path via the IVF_DATA_FILE environment variable instead.
-# data/*.xlsx
+# Patient-level data is NOT distributed with this repository. Any local copy of
+# the cohort stays untracked; point the code at it with IVF_DATA_FILE.
+# See data/README.md.
+data/*.xlsx
+data/*.xls
+data/*.csv

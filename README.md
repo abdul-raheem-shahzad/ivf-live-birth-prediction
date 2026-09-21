@@ -4,12 +4,17 @@ Code, data documentation, and figures for **"A curated single-centre dataset and
 hybrid attention–logistic regression ensemble for live-birth prediction after fresh
 embryo transfer in IVF/ICSI."**
 
-The repository contains everything needed to reproduce the study end-to-end: the
-curated 616-cycle cohort, the embryo-morphology encoding, an eleven-model benchmark,
-the ablations, and every figure and table reported in the manuscript.
+This repository contains the full analysis code, the embryo-morphology encoding, the
+eleven-model benchmark, the ablations, and every figure and table reported in the
+manuscript.
+
+> **The dataset is not included.** The cohort is patient-level clinical data and
+> cannot be published. It is available from the corresponding authors on reasonable
+> request — see [`data/README.md`](data/README.md).
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![License](https://img.shields.io/badge/code%20license-MIT-green)
+![Dataset](https://img.shields.io/badge/dataset-on%20request-lightgrey)
 ![Status](https://img.shields.io/badge/manuscript-under%20review-orange)
 
 ---
@@ -50,8 +55,9 @@ components and the tabular foundation-model baselines.
 ├── run_and_visualize.py          single entry point: runs the benchmark, writes
 │                                 results/ and figures/
 ├── data/
-│   ├── updated_method_encoded.07.25.xlsx    616 cycles x 72 columns
-│   └── README.md                            cohort description, ethics, terms of use
+│   └── README.md                 cohort description, why the data are not public,
+│                                 and how to request access (the dataset itself is
+│                                 NOT distributed with this repository)
 ├── docs/
 │   └── dataset_encoding_documentation.md    column-by-column encoding reference
 ├── results/                      tables regenerated on every run
@@ -80,7 +86,13 @@ pip install -r requirements.txt
 python run_and_visualize.py
 ```
 
-That one command runs the whole study. It prints the full analysis to the terminal,
+`run_and_visualize.py` needs the cohort file, which is **not** in this repository.
+Place it at `data/updated_method_encoded.07.25.xlsx`, or set `IVF_DATA_FILE`; without
+it the script stops immediately with a `FileNotFoundError` naming both options. See
+[`data/README.md`](data/README.md) for how to request access.
+
+With the data in place, that one command runs the whole study. It prints the full
+analysis to the terminal,
 overwrites the five tables in `results/`, and regenerates all 17 figures in
 `figures/` as both `.png` and `.pdf`. Nothing is hardcoded — every number in every
 figure is read from the live run.
@@ -107,8 +119,24 @@ Hospital, Wuhan University (February 2018 – November 2025). One row is one cyc
 | Predictor domains | female factors, male factors, stimulation and laboratory, oocyte retrieval and embryo development |
 | Ethics | Zhongnan Hospital of Wuhan University, approval No. 2025346K; consent waived (retrospective) |
 
-Details, terms of use, and the no-identifiers statement are in
-[`data/README.md`](data/README.md).
+### Availability
+
+The dataset is **not distributed with this repository.** These are patient-level
+clinical records from a single centre — per-cycle hormone assays, semen parameters,
+embryology counts, embryo grades, and the live-birth outcome. Detail at that
+granularity, from one centre over a defined period, is not safely anonymous even with
+direct identifiers removed. The ethics approval covers retrospective analysis under a
+waiver of informed consent; it does not authorize public redistribution of the
+records.
+
+The data are available from the corresponding authors on reasonable request, subject
+to institutional approval and an appropriate data-use agreement: Ming Zhang
+(whu_mz@163.com), Juan Deng (dengjuan@whu.edu.cn). The full rationale, the schema, and
+the terms of use are in [`data/README.md`](data/README.md).
+
+The aggregate outputs of a complete run — model metrics, the 50 selected features, and
+consensus importance — are committed under [`results/`](results), so every number
+reported below can be inspected without access to the raw data.
 
 ### Differential ICM/TE weighting for blastocyst morphology
 

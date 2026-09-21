@@ -89,9 +89,10 @@ def resolve_data_file():
         if path and os.path.isfile(path):
             return path
     raise FileNotFoundError(
-        f"Could not find {DATA_FILENAME!r}. Put it in "
-        f"{os.path.join(_ROOT, 'data')!r}, or set the IVF_DATA_FILE environment "
-        f"variable to its full path."
+        f"Could not find {DATA_FILENAME!r}. The dataset is not distributed with "
+        f"this repository; see data/README.md for how to request access. Once you "
+        f"have it, put it in {os.path.join(_ROOT, 'data')}, or set the "
+        f"IVF_DATA_FILE environment variable to its full path."
     )
 
 
