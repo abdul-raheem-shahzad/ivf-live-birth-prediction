@@ -109,14 +109,16 @@ def feature_category(f):
                                     'expansion', 'follicles punctured', 'high-quality',
                                     'available at d3'])):
         return 'Embryo / Lab'
-    if 'endometrial' not in f and any(x in f for x in [
-            'fsh', 'lh', 'e2', 'prl', 'amh', 'tsh', 'gnrh', 'hcg', 'basal',
+    if ('endometrial' not in f and 'membrane thickness' not in f and any(x in f for x in [
+            'fsh', 'lh', 'e2', 'prl', 'amh', 'tsh', 'gnrh', 'hcg', 'basal', 'basic',
             'gn-start-day', 'trigger-day', 'total gn', 'total fsh', 'total hmg',
-            'total lh', 'gn dose', 'gn stimulation', 'p (ng']):
+            'total lh', 'gn dose', 'gn stimulation', 'gn start day', 'p (ng'])):
         return 'Hormone Levels'
-    if f.startswith('male ') or 'sperm' in f or 'motility' in f or 'immotility' in f:
+    if (f.startswith('male ') or 'sperm' in f or 'semen' in f or 'motility' in f
+            or 'immotility' in f):
         return 'Male Factors'
-    if f.startswith('female ') or f.startswith('duration of infertility'):
+    if (f.startswith('female ') or f.startswith('woman')
+            or 'infertility duration' in f or 'duration of infertility' in f):
         return 'Female Factors'
     return 'Treatment / Other'
 

@@ -73,10 +73,11 @@ warnings.filterwarnings('ignore')
 
 # ---------------------------------------------------------------------------
 # DATA LOCATION
-# The dataset ships in data/ next to this file. Set the IVF_DATA_FILE
-# environment variable to run against a copy kept outside the repository.
+# The cohort is NOT distributed with this repository (patient privacy; see
+# data/README.md). Put your copy in data/, or set the IVF_DATA_FILE
+# environment variable to its full path.
 # ---------------------------------------------------------------------------
-DATA_FILENAME = 'updated_method_encoded.07.25.xlsx'
+DATA_FILENAME = 'updated_method_encoded.09.25.xlsx'
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -192,6 +193,57 @@ def calculate_metrics(y_true, y_pred, y_proba):
     }
 
 
+# =============================================================================
+# EMBRYO-MORPHOLOGY ENCODER (see embryo_morphology_encoding_v2.md)
+# Turns the raw 'Embryo morphology' text into 10 numeric columns. Applied
+# automatically when those columns are not already present in the file.
+#   Blastocyst 'eXYZ' (e.g. 4AA): expansion digit, ICM letter, TE letter
+#       blast_eN_ICM_w = ICM_grade x 0.5 ; blast_eN_TE_w = TE_grade x 1.0  (A=3,B=2,C=1)
+#       blast_eN_exp_quality: 3-4 -> 2 (optimal), 1-2/5-6 -> 1, none -> 0
+#   Cleavage 'R/cells' (e.g. II/8): Roman grade / cell count
+#       clv_eN_grade: I=4,II=3,III=2,IV=1 ; clv_eN_cell_quality: 8->3, 7/9->2, else 1
+#   Two embryos split by ';' fill the e1 / e2 slots; unused slots stay 0.
+# =============================================================================
+import re as _re
+_BLAST_RE = _re.compile(r'([1-6])([A-C])([A-C])')
+_CLV_RE = _re.compile(r'(I{1,3}|IV)\s*/\s*(\d+)')
+_GRADE_AB = {'A': 3, 'B': 2, 'C': 1}
+_GRADE_ROM = {'I': 4, 'II': 3, 'III': 2, 'IV': 1}
+_ENC_COLS = ['blast_e1_ICM_w', 'blast_e1_TE_w', 'blast_e2_ICM_w', 'blast_e2_TE_w',
+             'clv_e1_grade', 'clv_e2_grade', 'blast_e1_exp_quality', 'blast_e2_exp_quality',
+             'clv_e1_cell_quality', 'clv_e2_cell_quality']
+
+
+def _cell_quality(n):
+    return 3 if n == 8 else (2 if n in (7, 9) else 1)
+
+
+def _exp_quality(e):
+    return 2 if e in (3, 4) else 1
+
+
+def encode_embryo_morphology(df, col='Embryo morphology'):
+    rows = []
+    for val in df[col].astype(str):
+        s = {k: 0 for k in _ENC_COLS}
+        for i, tok in enumerate(val.split(';')[:2]):
+            tok = tok.strip()
+            m = _BLAST_RE.search(tok)
+            if m:
+                s[f'blast_e{i+1}_ICM_w'] = _GRADE_AB[m.group(2)] * 0.5
+                s[f'blast_e{i+1}_TE_w'] = _GRADE_AB[m.group(3)] * 1.0
+                s[f'blast_e{i+1}_exp_quality'] = _exp_quality(int(m.group(1)))
+                continue
+            m = _CLV_RE.search(tok)
+            if m:
+                s[f'clv_e{i+1}_grade'] = _GRADE_ROM[m.group(1)]
+                s[f'clv_e{i+1}_cell_quality'] = _cell_quality(int(m.group(2)))
+        rows.append(s)
+    for k in _ENC_COLS:
+        df[k] = [r[k] for r in rows]
+    return df
+
+
 def run_comparison_13models():
     print("="*100)
     print("COMPREHENSIVE MODEL COMPARISON - 11 MODELS")
@@ -205,31 +257,37 @@ def run_comparison_13models():
     df = pd.read_excel(data_file)
 
     # =====================================================================
-    # FIX 3: Column handling for the 2025-07 dataset.
-    # The feature lists below use the dataset's own (new) column names. Several
-    # of those names carry a trailing space (e.g. 'Female basal FSH (mIU/mL) '),
-    # so strip surrounding whitespace on load to guarantee an exact match.
+    # FIX 3: Column handling for the 2025-09 dataset.
+    # Feature lists below use this dataset's own column names. Strip surrounding
+    # whitespace on load to guarantee exact matches.
     # =====================================================================
     df.columns = df.columns.str.strip()
 
-    target_col = 'Outcome_Encoded' if 'Outcome_Encoded' in df.columns else 'Transfer outcome (Y)'
+    # FIX 5: the 2025-09 file ships the RAW 'Embryo morphology' text but NOT the
+    # 10 encoded columns (blast_e*/clv_e*). Generate them here if missing, so the
+    # same modelling code works whether the file is pre-encoded or raw.
+    if 'blast_e1_ICM_w' not in df.columns and 'Embryo morphology' in df.columns:
+        df = encode_embryo_morphology(df)
+        print("  Generated 10 embryo-morphology encoding columns from 'Embryo morphology'.")
+
+    target_col = 'Outcome_Encoded' if 'Outcome_Encoded' in df.columns else 'Transplant outcome (Y)'
     # 'Embryo morphology' is the raw text grade string; it is represented
     # numerically by the encoding columns (blast_e*/clv_e*), so exclude the raw text.
-    exclude_cols = ['Outcome_Encoded', 'Transfer outcome (Y)', 'Embryo morphology']
+    exclude_cols = ['Outcome_Encoded', 'Transplant outcome (Y)', 'Embryo morphology']
     feature_cols = [col for col in df.columns if col not in exclude_cols]
-    
+
     X = df[feature_cols].copy()
     y_raw = df[target_col].values
 
-    # Encode string targets -> 0/1 so metrics (pos_label=1) and the NN work.
+    # Encode string target -> 0/1 so metrics (pos_label=1) and the NN work.
     # FIX 4: define the positive class EXPLICITLY as a successful live birth (=1).
-    # The 2025-07 labels are 'Live birth' / 'Non-live birth'; a plain LabelEncoder
-    # sorts alphabetically and would make 'Non-live birth' the positive class,
-    # inverting Precision/Recall/F1. Mapping by meaning keeps success = 1
-    # (matching the old 'childbirth' = 1) regardless of spelling or sort order.
+    # The 2025-09 target is 4-class ('childbirth', 'Not pregnant', 'abortion',
+    # 'Biochemical pregnancy'); we binarise it to live birth ('childbirth') = 1
+    # vs everything else = 0. Exact-match aliases avoid 'Not pregnant' /
+    # 'Biochemical pregnancy' being counted as positive.
     if not np.issubdtype(np.asarray(y_raw).dtype, np.number):
         y_str = pd.Series(y_raw).astype(str).str.strip().str.lower()
-        positive_aliases = {'live birth', 'childbirth', 'pregnant', 'yes', '1', 'y'}
+        positive_aliases = {'live birth', 'childbirth', 'yes', '1', 'y'}
         y = y_str.isin(positive_aliases).astype(int).values
         if y.sum() == 0:
             raise ValueError(f"No positive (live-birth) labels matched. Labels seen: "
@@ -247,32 +305,36 @@ def run_comparison_13models():
     # misclassified due to inconsistent data types in the source Excel file.
     
     NUMERICAL_FEATURES = [
-        # FIX 1: 'Female weight (kg)' removed here (collinear with BMI, r=0.88, VIF~6.7).
-        "Female age (years)", "Male age (years)", "Female height (cm)",
-        "Female BMI (kg/m²)",
-        "Female basal FSH (mIU/mL)", "Female basal LH (mIU/mL)",
-        "Female basal E2 (pg/mL)", "Female basal PRL (ng/mL)",
-        "Female basal T (ng/mL)", "Female basal P (ng/mL)",
-        "Female AMH (ng/mL)", "Female TSH (mIU/L)",
-        "Duration of infertility (years)",
-        "Male height (cm)", "Male weight (kg)", "Male BMI (kg/m²)",
-        "Male serum FSH (mIU/mL)", "Male serum LH (mIU/mL)",
-        "Male serum PRL (ng/mL)", "Male serum T (ng/mL)",
-        "Sperm concentration (10⁶/mL)", "Progressive motility (PR, %)",
-        "Non-progressive motility (NP, %)", "Immotility (IM, %)",
-        "Normal sperm morphology (%)", "Sperm DFI (%)",
-        "Female Gn-start-day FSH (mIU/mL)", "Female Gn-start-day LH (mIU/mL)",
-        "Female Gn-start-day E2 (pg/mL)", "Female Gn-start-day P (ng/mL)",
-        "Duration of Gn stimulation (days)", "Total Gn dose (IU)",
-        "Total FSH dose (IU)", "Total HMG dose (IU)", "Total LH dose (IU)",
-        "Female trigger-day LH (mIU/mL)", "Female trigger-day E2 (pg/mL)",
-        "Female trigger-day P (ng/mL)", "Trigger-day endometrial thickness (mm)",
-        "Urinary hCG trigger dose (IU)", "Recombinant hCG trigger dose (µg)",
-        "GnRH agonist trigger dose (mg)",
-        "Number of follicles punctured", "Number of oocytes retrieved",
-        "Number of MII oocytes", "Number of 2PN zygotes",
-        "Number of multipronuclear zygotes", "Number of high-quality embryos",
-        "Number of embryos available at D3", "Number of blastocyst-cultured embryos",
+        # FIX 1: 'female Weight (kg)' removed here (collinear with BMI, r=0.88, VIF~6.7).
+        "woman's age", "male age", "female Height (cm)",
+        "female BMI (kg/m²)",
+        "female Basal FSH (mIU/mL)", "female Basic LH (mIU/mL)",
+        "female Basic E2 (pg/mL)", "female Basic PRL (ng/mL)",
+        "female Basal T (ng/mL)", "female Basal P (ng/mL)",
+        "female AMH (ng/mL)", "female Thyroid function test (TSH) (mIU/mL)",
+        "female Infertility duration",
+        "male Height (cm)", "male Weight (kg)", "male BMI (kg/m²)",
+        "male FSH (mIU/mL)", "male LH (mIU/mL)",
+        "male PRL (ng/mL)", "male T (ng/mL)",
+        "male Semen density (10)⁶/mL)", "male Semen PR (%)",
+        "male Semen NP (%)", "male Semen IM (%)",
+        "male Percentage of normal semen morphology (%)", "male Semen DFI (%)",
+        "Hormone levels on the Gn start day FSH (mIU/mL)",
+        "Hormone levels on the Gn start day LH (mIU/mL)",
+        "Hormone levels on the Gn start day E2 (pg/mL)",
+        "Hormone levels on the Gn start day P (ng/mL)",
+        "ovulation induction Gn Total Days", "ovulation induction Total Gn (IU)",
+        "ovulation induction Total FSH (IU)", "ovulation induction Total HMG (IU)",
+        "ovulation induction Total LH (IU)",
+        "HCG Day LH (mIU/mL)", "HCG Day E2 (pg/mL)",
+        "HCG Day P (ng/mL)", "HCG Day Inner membrane thickness (mm)",
+        "HCG Day Human chorionic gonadotropin (IU)",
+        "HCG Day Recombinant human chorionic gonadotropin levels (ug)",
+        "HCG Day GnRH-a (mg)",
+        "Number of follicles punctured", "Number of eggs retrieved",
+        "MII number", "2PN number",
+        "Number of MPNs", "Number of good embryos",
+        "Number of embryos available at D3", "Blastocyst culture number",
         "Number of blastocysts formed",
         # --- Embryo morphology encoding v2 (see embryo_morphology_encoding_v2.md) ---
         # Blastocyst grades stored as weighted products: ICM x 0.5, TE x 1.0.
@@ -289,8 +351,8 @@ def run_comparison_13models():
     ]
 
     CATEGORICAL_FEATURES = [
-        "Ovarian stimulation protocol", "Method of fertilization",
-        "Female smoking history", "Male smoking history", "Trigger type",
+        "Medication regimen", "Method of fertilization",
+        "female smoking history", "male smoking history", "HCG Day Trigger type",
         "Types of embryos transferred",
         "Number of cleavage-stage embryos transferred",
         "Number of blastocysts transferred",
@@ -749,18 +811,19 @@ However, the IHAN-based hybrid models still perform better.
                                         'high-quality', 'available at d3'])):
             return 'Embryo / Lab'
         # 2) Hormone assays / gonadotropin dosing (either sex, any timepoint).
-        #    Endometrial thickness is uterine, not a hormone -> excluded here.
-        if 'endometrial' not in f and any(x in f for x in [
-                'fsh', 'lh', 'e2', 'prl', 'amh', 'tsh', 'gnrh', 'hcg', 'basal',
+        #    (Inner) membrane / endometrial thickness is uterine, not a hormone.
+        if ('endometrial' not in f and 'membrane thickness' not in f and any(x in f for x in [
+                'fsh', 'lh', 'e2', 'prl', 'amh', 'tsh', 'gnrh', 'hcg', 'basal', 'basic',
                 'gn-start-day', 'trigger-day', 'total gn', 'total fsh', 'total hmg',
-                'total lh', 'gn dose', 'gn stimulation', 'p (ng']):
+                'total lh', 'gn dose', 'gn stimulation', 'gn start day', 'p (ng'])):
             return 'Hormone Levels'
-        # 3) Male demographics / anthropometry / semen (sex is now a PREFIX).
-        if (f.startswith('male ') or 'sperm' in f or 'motility' in f
+        # 3) Male demographics / anthropometry / semen (sex is a PREFIX).
+        if (f.startswith('male ') or 'sperm' in f or 'semen' in f or 'motility' in f
                 or 'immotility' in f):
             return 'Male Factors'
         # 4) Female demographics / anthropometry / lifestyle.
-        if f.startswith('female ') or f.startswith('duration of infertility'):
+        if (f.startswith('female ') or f.startswith('woman')
+                or 'infertility duration' in f or 'duration of infertility' in f):
             return 'Female Factors'
         # 5) Everything else (protocol, fertilization method, trigger type,
         #    endometrial thickness, one-hot dummies).

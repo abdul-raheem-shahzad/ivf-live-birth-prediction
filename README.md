@@ -27,17 +27,17 @@ components and the tabular foundation-model baselines.
 
 | Rank | Model | AUC-ROC | Accuracy | Precision | Recall | F1 |
 |---:|---|---:|---:|---:|---:|---:|
-| 1 | **HAN + LR (proposed)** | **0.717** | 0.699 | 0.639 | 0.605 | 0.622 |
-| 2 | HAN backbone (alone) | 0.700 | 0.645 | 0.571 | 0.526 | 0.548 |
-| 3 | Logistic regression | 0.680 | 0.645 | 0.558 | 0.632 | 0.593 |
-| 4 | TabPFN + LR | 0.665 | 0.645 | 0.619 | 0.342 | 0.441 |
-| 5 | TabPFN | 0.651 | 0.624 | 0.588 | 0.263 | 0.364 |
-| 6 | Support-vector machine | 0.628 | 0.634 | 0.625 | 0.263 | 0.370 |
-| 7 | XGBoost&nbsp;<sup>[†](#implementation-notes)</sup> | 0.626 | 0.613 | 0.533 | 0.421 | 0.471 |
-| 8 | *k*-nearest neighbours | 0.623 | 0.645 | 0.586 | 0.447 | 0.508 |
-| 9 | Gradient boosting | 0.616 | 0.602 | 0.522 | 0.316 | 0.393 |
-| 10 | Naive Bayes | 0.593 | 0.570 | 0.486 | 0.895 | 0.630 |
-| 11 | Random forest | 0.560 | 0.624 | 0.600 | 0.237 | 0.340 |
+| 1 | **HAN + LR (proposed)** | **0.710** | 0.710 | 0.657 | 0.605 | 0.630 |
+| 2 | HAN backbone (alone) | 0.700 | 0.667 | 0.590 | 0.605 | 0.597 |
+| 3 | Logistic regression | 0.667 | 0.645 | 0.558 | 0.632 | 0.593 |
+| 4 | TabPFN + LR | 0.666 | 0.656 | 0.615 | 0.421 | 0.500 |
+| 5 | TabPFN | 0.650 | 0.613 | 0.545 | 0.316 | 0.400 |
+| 6 | Support-vector machine | 0.632 | 0.624 | 0.588 | 0.263 | 0.364 |
+| 7 | Gradient boosting | 0.627 | 0.591 | 0.500 | 0.395 | 0.441 |
+| 8 | XGBoost&nbsp;<sup>[†](#implementation-notes)</sup> | 0.624 | 0.613 | 0.533 | 0.421 | 0.471 |
+| 9 | *k*-nearest neighbours | 0.613 | 0.645 | 0.586 | 0.447 | 0.507 |
+| 10 | Naive Bayes | 0.581 | 0.570 | 0.471 | 0.421 | 0.444 |
+| 11 | Random forest | 0.556 | 0.591 | 0.500 | 0.263 | 0.345 |
 
 93 held-out test cycles. Full precision in [`results/model_results.csv`](results/model_results.csv).
 
@@ -87,7 +87,7 @@ python run_and_visualize.py
 ```
 
 `run_and_visualize.py` needs the cohort file, which is **not** in this repository.
-Place it at `data/updated_method_encoded.07.25.xlsx`, or set `IVF_DATA_FILE`; without
+Place it at `data/updated_method_encoded.09.25.xlsx`, or set `IVF_DATA_FILE`; without
 it the script stops immediately with a `FileNotFoundError` naming both options. See
 [`data/README.md`](data/README.md) for how to request access.
 
@@ -102,7 +102,7 @@ Runtime is a few minutes on a CPU-only laptop; no GPU is needed.
 To run against a copy of the dataset stored outside the repository:
 
 ```bash
-IVF_DATA_FILE=/secure/path/updated_method_encoded.07.25.xlsx python run_and_visualize.py
+IVF_DATA_FILE=/secure/path/updated_method_encoded.09.25.xlsx python run_and_visualize.py
 ```
 
 ---
@@ -114,8 +114,8 @@ Hospital, Wuhan University (February 2018 – November 2025). One row is one cyc
 
 | | |
 |---|---|
-| Outcome | live birth (251, 40.7%) vs. non-live birth (365, 59.3%) |
-| Columns | 72 — 62 clinical + 10 embryo-morphology encoding columns |
+| Outcome | recorded in four classes — childbirth (251), not pregnant (293), abortion (45), biochemical pregnancy (27) — binarised in code to live birth (251, 40.7%) vs. non-live birth (365, 59.3%) |
+| Columns | 62 clinical columns, including the raw `Embryo morphology` text; the 10 numeric morphology columns are derived in code at run time |
 | Predictor domains | female factors, male factors, stimulation and laboratory, oocyte retrieval and embryo development |
 | Ethics | Zhongnan Hospital of Wuhan University, approval No. 2025346K; consent waived (retrospective) |
 
@@ -143,7 +143,9 @@ reported below can be inspected without access to the raw data.
 The methodological contribution on the data side. Raw morphology text describing one
 or two transferred embryos, in either the Gardner blastocyst system or the
 cleavage-stage system, is converted into ten numeric columns — separate slots per
-embryo, separate columns per system, so the two scales never mix.
+embryo, separate columns per system, so the two scales never mix. The conversion is
+done by `encode_embryo_morphology()` in `compare_13models_fixed.py`, so the scheme is
+reproducible from the raw grades rather than baked into a spreadsheet.
 
 Conventional Gardner grading treats the inner cell mass (ICM) and trophectoderm (TE)
 as equally informative. In this cohort TE was more strongly associated with live
@@ -172,19 +174,24 @@ The full derivation, including worked examples, is in
 Everything is fit on the training split only; the test set is untouched until
 evaluation.
 
-1. **Target** — mapped by meaning, so live birth is always the positive class. A
-   plain `LabelEncoder` would sort alphabetically and pick "Non-live birth" as
-   class 1, silently inverting precision, recall, and F1.
-2. **Feature typing** — numerical and categorical columns are declared explicitly by
+1. **Encode embryo morphology** — the raw `Embryo morphology` text is parsed into
+   the ten numeric columns described above. The encoder runs automatically whenever
+   those columns are absent, so the same code works on a raw or a pre-encoded file.
+2. **Target** — the four recorded outcomes are binarised by exact match:
+   `childbirth` → 1; `Not pregnant`, `abortion` and `Biochemical pregnancy` → 0.
+   Matching by meaning rather than letting a `LabelEncoder` sort alphabetically keeps
+   live birth as the positive class, and matching exactly stops `Biochemical
+   pregnancy` from being scored as a success.
+3. **Feature typing** — numerical and categorical columns are declared explicitly by
    domain knowledge, not auto-detected, so numeric columns can never be one-hot
-   encoded by accident. `Female weight (kg)` is dropped as collinear with BMI
+   encoded by accident. `female Weight (kg)` is dropped as collinear with BMI
    (r = 0.88, VIF ≈ 6.7).
-3. **Stratified 85/15 split** — 523 training and 93 test cycles, before any fitting.
-4. **Impute** — `KNNImputer(n_neighbors=5)`, fit on train.
-5. **Scale** — `RobustScaler` (median/IQR), fit on train.
-6. **One-hot encode** — 8 categorical columns → 15 dummies, first level dropped.
-   76 candidate features in total.
-7. **Select** — `SelectKBest(f_classif, k=50)`, fit on train.
+4. **Stratified 85/15 split** — 523 training and 93 test cycles, before any fitting.
+5. **Impute** — `KNNImputer(n_neighbors=5)`, fit on train.
+6. **Scale** — `RobustScaler` (median/IQR), fit on train.
+7. **One-hot encode** — 8 categorical columns → 15 dummies, first level dropped.
+   76 candidate features in total (61 numerical + 15 dummies).
+8. **Select** — `SelectKBest(f_classif, k=50)`, fit on train.
 
 ## The model
 
@@ -225,19 +232,19 @@ averaged into a consensus ranking.
   <img src="figures/fig_feature_importance.png" alt="Top 15 predictors by consensus importance" width="620">
 </p>
 
-The differentially weighted **trophectoderm feature ranks first overall** (4.50% of
+The differentially weighted **trophectoderm feature ranks first overall** (4.53% of
 consensus importance), which is the empirical counterpart of the encoding decision
 above. Aggregated by clinical domain:
 
 | Domain | Share of consensus importance | Selected features |
 |---|---:|---:|
-| Embryo / laboratory | 41.0% | 19 |
-| Hormone levels | 30.8% | 17 |
-| Treatment / other | 10.9% | 5 |
-| Male factors | 10.7% | 6 |
-| Female factors | 6.6% | 3 |
+| Embryo / laboratory | 36.3% | 17 |
+| Hormone levels | 28.6% | 16 |
+| Treatment / other | 17.5% | 8 |
+| Male factors | 11.1% | 6 |
+| Female factors | 6.5% | 3 |
 
-Embryo/laboratory and hormonal variables together account for **71.8%** of total
+Embryo/laboratory and hormonal variables together account for **64.9%** of total
 importance. Note that model families disagree markedly about which predictors matter
 — tree ensembles concentrate on continuous physiological variables and assign almost
 nothing to sparse binary dummies, while logistic regression does the opposite — so a
@@ -317,6 +324,11 @@ want, so nothing looks like a discrepancy:
   package. That is why `xgboost` is not in `requirements.txt`. Model 3, "Gradient
   Boosting", is `GradientBoostingClassifier(n_estimators=150, max_depth=4)`.
 - **`compare_13models_fixed.py` compares 11 models.** The filename is historical.
+- **The morphology encoder lives in the code, not the spreadsheet.**
+  `encode_embryo_morphology()` in `compare_13models_fixed.py` parses the raw
+  `Embryo morphology` text into the ten `blast_*` / `clv_*` columns, and runs only
+  when those columns are missing. Earlier versions of the cohort shipped the columns
+  pre-computed; both layouts work unchanged.
 - The mixing weight `w` is chosen from the coarse grid {0.3, 0.5, 0.7} on a stratified
   validation split of the training data. `figures/fig_mixing_weight` additionally
   plots a finer sweep over w ∈ [0, 1] on that same validation split, for sensitivity.

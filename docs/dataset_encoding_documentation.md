@@ -1,15 +1,12 @@
 # Dataset Encoding Documentation
 
-How the IVF dataset (`updated_method_encoded.07.25.xlsx`) is encoded — from the raw
-clinical Excel columns to the model-ready feature matrix used in
-`compare_13models_fixed.py`.
+How the IVF cohort (`updated_method_encoded.09.25.xlsx`) is turned into the model-ready
+feature matrix used by `compare_13models_fixed.py` — from the raw clinical Excel
+columns to the 50 features the models actually see.
 
-There are **two layers** of encoding:
-
-1. **In-file encoding** — the raw free-text `Embryo morphology` column was converted
-   into 10 numeric columns that are already stored in the Excel file.
-2. **Modeling-time encoding** — applied in code each run: target encoding, numeric
-   cleaning/imputation/scaling, one-hot encoding of categoricals, and feature selection.
+Everything here happens **in code at run time**. Unlike earlier revisions of this
+cohort, the Excel file ships only raw clinical columns; no encoding step is baked into
+the spreadsheet.
 
 ---
 
@@ -17,26 +14,38 @@ There are **two layers** of encoding:
 
 | Property | Value |
 |----------|-------|
-| File | `updated_method_encoded.07.25.xlsx` |
+| File | `updated_method_encoded.09.25.xlsx` (not distributed — see `data/README.md`) |
 | Rows (patients/cycles) | 616 |
-| Columns | 72 (62 clinical + 10 embryo-encoding) |
-| Target | `Transfer outcome (Y)` — `Live birth` / `Non-live birth` |
-| Positive class | Live birth = **1** (251 / 616 = 40.7%) |
+| Columns | 62 clinical, including the raw `Embryo morphology` text |
+| Target | `Transplant outcome (Y)` — four classes |
+| Positive class | live birth (`childbirth`) = **1** (251 / 616 = 40.7%) |
+| Missing cells | 1,302 |
 
 ---
 
 ## 1. Target encoding
 
-The outcome label is mapped **by meaning**, not alphabetically, so that a successful
-**live birth is always the positive class (= 1)**.
+The outcome is recorded in **four** classes and binarised by **exact match**, so that a
+successful live birth is always the positive class (= 1).
 
-| Raw label | Encoded |
-|-----------|:------:|
-| `Live birth` (also: `childbirth`, `pregnant`, `yes`, `y`, `1`) | **1** |
-| `Non-live birth` (anything else) | **0** |
+| Raw label | Count | Encoded |
+|-----------|------:|:-------:|
+| `childbirth` (also accepted: `live birth`, `yes`, `y`, `1`) | 251 | **1** |
+| `Not pregnant` | 293 | 0 |
+| `abortion` | 45 | 0 |
+| `Biochemical pregnancy` | 27 | 0 |
 
-> Why explicit? A plain `LabelEncoder` sorts alphabetically and would pick
-> `Non-live birth` as class 1, silently inverting Precision / Recall / F1.
+Two things matter here:
+
+- **Match by meaning, not alphabetically.** A plain `LabelEncoder` sorts labels and
+  would pick the wrong class as positive, silently inverting precision, recall and F1.
+- **Match exactly, not by substring.** `Biochemical pregnancy` contains "pregnan" but is
+  *not* a live birth. Exact aliases stop it, and `Not pregnant`, being scored as
+  success.
+
+The run prints the labels it saw and the resulting positive count, and raises if no
+positive label matched — so a renamed category fails loudly instead of quietly
+producing a degenerate model.
 
 ---
 
@@ -46,25 +55,28 @@ Every predictor column is declared as **numerical** or **categorical** by domain
 knowledge (not auto-detected), which prevents numeric columns from being accidentally
 one-hot encoded.
 
-- **Numerical** → cleaned, imputed, scaled (kept as-is, one column each).
-- **Categorical** → one-hot encoded into 0/1 dummy columns.
-- **Excluded** → `Transfer outcome (Y)` (target) and `Embryo morphology` (raw text,
-  already represented by the 10 encoded columns).
+- **Numerical** (61) → cleaned, imputed, scaled; one column each.
+- **Categorical** (8) → one-hot encoded into 0/1 dummy columns.
+- **Excluded** → `Transplant outcome (Y)` (the target) and `Embryo morphology` (raw
+  text, represented numerically by the ten derived columns in §4).
+
+61 + 8 = **69 raw predictors**.
 
 ### Categorical columns (8)
 
-`Ovarian stimulation protocol`, `Method of fertilization`, `Female smoking history`,
-`Male smoking history`, `Trigger type`, `Types of embryos transferred`,
+`Medication regimen`, `Method of fertilization`, `female smoking history`,
+`male smoking history`, `HCG Day Trigger type`, `Types of embryos transferred`,
 `Number of cleavage-stage embryos transferred`, `Number of blastocysts transferred`.
 
-### Numerical columns
+### Numerical columns (61)
 
-All remaining clinical measurements (age, BMI, hormone assays, semen parameters,
-stimulation doses, embryology counts) **plus** the 10 embryo-encoding columns from §4.
+All remaining clinical measurements — female and male demographics and anthropometry,
+basal / Gn-start-day / HCG-day hormone assays, semen parameters, stimulation doses,
+oocyte and embryology counts — **plus** the ten derived embryo columns from §4.
 
-> **Multicollinearity note:** `Female weight (kg)` is **excluded** from the numerical
-> list because it is highly collinear with `Female BMI (kg/m²)` (r = 0.88, VIF ≈ 6.7).
-> BMI (the clinical summary) and `Female height (cm)` (independent) are kept. Male
+> **Multicollinearity note:** `female Weight (kg)` is **excluded** from the numerical
+> list because it is highly collinear with `female BMI (kg/m²)` (r = 0.88, VIF ≈ 6.7).
+> BMI (the clinical summary) and `female Height (cm)` (independent) are kept. Male
 > height/weight/BMI are **not** collinear (VIF ≈ 1) and are all kept.
 
 ---
@@ -75,31 +87,35 @@ For every numerical column, in order:
 
 1. **Coerce to number** — `pd.to_numeric(errors='coerce')` turns stray text
    (placeholders like `/`) into `NaN`.
-2. **Impute** — `KNNImputer(n_neighbors=5)` fills missing values, **fit on the training
-   split only** (then applied to test) to avoid data leakage.
+2. **Impute** — `KNNImputer(n_neighbors=5)`, **fit on the training split only** (then
+   applied to test) to avoid leakage.
 3. **Scale** — `RobustScaler` (median / IQR, robust to outliers), also **fit on train
    only**.
 
 ---
 
-## 4. Embryo morphology encoding (already stored in the Excel)
+## 4. Embryo morphology encoding (derived in code)
 
-The raw `Embryo morphology` text describes **one or two embryos** (two are separated by
-`;`) in one of two grading systems:
+`encode_embryo_morphology()` in `compare_13models_fixed.py` parses the raw
+`Embryo morphology` text. It runs automatically whenever the derived columns are
+absent, so the same pipeline works on a raw or a pre-encoded file.
+
+The text describes **one or two embryos** (two separated by `;`) in one of two grading
+systems:
 
 | System | Example | Meaning |
 |--------|---------|---------|
 | Blastocyst | `4AA` | `(expansion)(ICM)(TE)` |
 | Cleavage | `II/8` | `(Roman grade)/(cell count)` |
 
-It is converted into **10 numeric columns** — separate slots for embryo 1 (`e1`) and
-embryo 2 (`e2`), and separate columns for the two systems so the scales never mix.
-Any slot that does not apply is **0** (e.g. embryo-2 slots for a single-embryo transfer;
-blastocyst columns on a cleavage row).
+It becomes **10 numeric columns** — separate slots for embryo 1 (`e1`) and embryo 2
+(`e2`), and separate columns per system so the two scales never mix. Any slot that does
+not apply is **0** (embryo-2 slots for a single-embryo transfer; blastocyst columns on a
+cleavage row).
 
 ### 4.1 Grade value tables
 
-**Blastocyst ICM / TE letters** (the leading expansion digit is handled separately in §4.3):
+**Blastocyst ICM / TE letters** (the leading expansion digit is handled in §4.4):
 
 | Letter | Value |
 |:------:|:-----:|
@@ -118,8 +134,8 @@ blastocyst columns on a cleavage row).
 
 ### 4.2 Blastocyst weighted columns
 
-Based on correlation analysis, ICM and TE are weighted differently and stored as the
-**weighted product**:
+ICM and TE are weighted **differently** — the methodological contribution — and stored
+as the weighted product:
 
 ```
 stored ICM value = ICM_grade × 0.5
@@ -132,6 +148,9 @@ stored TE  value = TE_grade  × 1.0
 | `blast_e1_TE_w`  | TE_grade × 1.0 |
 | `blast_e2_ICM_w` | ICM_grade × 0.5 |
 | `blast_e2_TE_w`  | TE_grade × 1.0 |
+
+This ranks the TE-superior `4BA` above `4AB`, a distinction equal-weight Gardner
+scoring cannot make.
 
 ### 4.3 Cleavage grade columns
 
@@ -167,12 +186,12 @@ toward **both** extremes — so they get their own optimality scores.
 | Morphology | ICM/TE (e1) | ICM/TE (e2) | clv grade (e1,e2) | exp qual (e1,e2) | cell qual (e1,e2) |
 |------------|:-----------:|:-----------:|:-----------------:|:----------------:|:-----------------:|
 | `4AA`        | 1.5 / 3.0 | 0 / 0 | 0, 0 | 2, 0 | 0, 0 |
-| `4AB; 4BB`   | 1.5 / 2.0 | 1.0 / 2.0 | 0, 0 | 2, 2 | 0, 0 |
-| `5AA`        | 1.5 / 3.0 | 0 / 0 | 0, 0 | 1, 0 | 0, 0 |
+| `4BB; 4BB`   | 1.0 / 2.0 | 1.0 / 2.0 | 0, 0 | 2, 2 | 0, 0 |
+| `4BC; 4BB`   | 1.0 / 1.0 | 1.0 / 2.0 | 0, 0 | 2, 2 | 0, 0 |
+| `4CB`        | 0.5 / 2.0 | 0 / 0 | 0, 0 | 2, 0 | 0, 0 |
 | `II/8`       | 0 / 0 | 0 / 0 | 3, 0 | 0, 0 | 3, 0 |
 | `II/7; II/8` | 0 / 0 | 0 / 0 | 3, 3 | 0, 0 | 2, 3 |
 | `III/6`      | 0 / 0 | 0 / 0 | 2, 0 | 0, 0 | 1, 0 |
-| `II/10`      | 0 / 0 | 0 / 0 | 3, 0 | 0, 0 | 1, 0 |
 
 ---
 
@@ -183,27 +202,23 @@ Each categorical column is cast to string and expanded with
 
 - One 0/1 dummy per category, **dropping the first** as a reference (avoids
   multicollinearity among the dummies).
-- 8 categorical columns → **15 dummy columns** in this dataset.
+- 8 categorical columns → **15 dummy columns** in this cohort.
 
 ### The `_nan` dummies
 
 Some columns (e.g. `Number of cleavage-stage embryos transferred`) are blank (`NaN`) for
-patients they don't apply to. Because the column is cast to string before `get_dummies`,
-`NaN` becomes the literal category `'nan'`, producing a `..._nan` dummy.
+patients they do not apply to. Because the column is cast to string before
+`get_dummies`, `NaN` becomes the literal category `'nan'`, producing a `..._nan` dummy.
 
-Example — `Number of cleavage-stage embryos transferred` has values `1.0` (160), `2.0`
-(83), and `NaN` (373):
-
-| Generated dummy | = 1 when… | Count |
-|-----------------|-----------|:-----:|
-| *(reference `1.0`, dropped)* | 1 cleavage embryo transferred | 160 |
-| `..._2.0` | 2 cleavage embryos transferred | 83 |
-| `..._nan` | value missing → **blastocyst transfer** | 373 |
-
-> The `NaN` here is **informative, not random** — those 373 rows are exactly the
-> blastocyst-transfer patients, so `..._nan` acts as a transfer-type indicator.
-> (Behaviour is pandas-version dependent: `astype(str)` maps `NaN → 'nan'` on older
-> pandas; on pandas 3.0 the `_nan` dummy is not produced.)
+> The `NaN` here is **informative, not random** — those rows are exactly the
+> blastocyst-transfer patients, so `..._nan` acts as a transfer-type indicator. Two such
+> dummies (`Number of cleavage-stage embryos transferred_nan`,
+> `Number of blastocysts transferred_nan`) survive feature selection.
+>
+> **This behaviour is pandas-version dependent.** `astype(str)` maps `NaN → 'nan'` on
+> pandas < 3.0 only; from pandas 3.0 the `_nan` dummies are not produced, the matrix has
+> 74 columns instead of 76, and the reported numbers will not reproduce. `requirements.txt`
+> pins `pandas==2.3.3` for this reason.
 
 ---
 
@@ -211,26 +226,31 @@ Example — `Number of cleavage-stage embryos transferred` has values `1.0` (160
 
 After numeric scaling and one-hot encoding are combined:
 
-- Total processed features: **~74** (numerical + 15 dummies).
-- `SelectKBest(f_classif, k=50)` keeps the **top 50** features by ANOVA F-score,
-  **fit on the training split only**.
+- Total processed features: **76** (61 numerical + 15 dummies).
+- `SelectKBest(f_classif, k=50)` keeps the **top 50** by ANOVA F-score, **fit on the
+  training split only**.
+
+The selected 50 break down as: Embryo / Lab 17, Hormone Levels 16, Treatment / Other 8,
+Male Factors 6, Female Factors 3. The full list is in
+[`../results/selected_features_by_category.txt`](../results/selected_features_by_category.txt).
 
 ---
 
 ## 7. End-to-end pipeline order
 
 ```
-Raw Excel (72 cols)
+Raw Excel (616 × 62)
    │
+   ├─ derive 10 embryo columns from 'Embryo morphology' (if absent)
    ├─ exclude target + raw 'Embryo morphology'
-   ├─ target  → 0/1 (Live birth = 1)
-   ├─ split numerical / categorical (drop female weight)
+   ├─ target  → 0/1 (childbirth = 1; other three classes = 0)
+   ├─ split numerical (61) / categorical (8)   ← drop female Weight (kg)
    │
    ├─ TRAIN/TEST SPLIT (85% / 15%, stratified)   ← before any fitting (no leakage)
    │
    ├─ numerical:  to_numeric → KNNImpute(fit=train) → RobustScale(fit=train)
    ├─ categorical: astype(str) → get_dummies(drop_first)
-   ├─ concat → ~74 features
+   ├─ concat → 76 features
    └─ SelectKBest(f_classif, k=50, fit=train)     → 50 model-ready features
 ```
 
@@ -240,11 +260,11 @@ Raw Excel (72 cols)
 
 | Column group | Encoding |
 |--------------|----------|
-| `Transfer outcome (Y)` | target → 1 (live birth) / 0 |
+| `Transplant outcome (Y)` | target → 1 (childbirth) / 0 (other three classes) |
 | Ages, BMI, height, hormones, semen, doses, counts | numeric → impute + RobustScale |
-| `Female weight (kg)` | **dropped** (collinear with BMI) |
-| `Ovarian stimulation protocol`, `Method of fertilization`, smoking (×2), `Trigger type`, `Types of embryos transferred`, transferred-counts (×2) | one-hot (`drop_first=True`) |
-| `Embryo morphology` (raw text) | **excluded** (encoded in the 10 columns below) |
+| `female Weight (kg)` | **dropped** (collinear with BMI) |
+| `Medication regimen`, `Method of fertilization`, smoking (×2), `HCG Day Trigger type`, `Types of embryos transferred`, transferred-counts (×2) | one-hot (`drop_first=True`) |
+| `Embryo morphology` (raw text) | **excluded** from the matrix; parsed into the 10 columns below |
 | `blast_e{1,2}_ICM_w`, `blast_e{1,2}_TE_w` | ICM×0.5, TE×1.0 (numeric) |
 | `clv_e{1,2}_grade` | Roman grade I–IV → 4–1 (numeric) |
 | `blast_e{1,2}_exp_quality` | expansion inverted-U (2/1/0) |
@@ -252,5 +272,5 @@ Raw Excel (72 cols)
 
 ---
 
-*Related: `embryo_morphology_encoding_v2.md` (detailed derivation of the 10 embryo
-columns) and `compare_13models_fixed.py` (the code that performs §1–6).*
+*Implemented in [`../compare_13models_fixed.py`](../compare_13models_fixed.py)
+(§1–6 and `encode_embryo_morphology()`).*

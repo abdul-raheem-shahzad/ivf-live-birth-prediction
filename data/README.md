@@ -2,7 +2,7 @@
 
 **The dataset is not distributed with this repository.**
 
-`updated_method_encoded.07.25.xlsx` — the curated single-centre IVF/ICSI cohort behind
+`updated_method_encoded.09.25.xlsx` — the curated single-centre IVF/ICSI cohort behind
 every result here — is deliberately absent. This directory holds only this note; the
 code will tell you where to put the file if you obtain it.
 
@@ -40,9 +40,10 @@ review the code without holding the data:
 | Property | Value |
 |---|---|
 | Rows (fresh embryo-transfer cycles) | 616 |
-| Columns | 72 — 62 clinical + 10 embryo-morphology encoding columns |
-| Target column | `Transfer outcome (Y)` — `Live birth` / `Non-live birth` |
-| Class balance | 251 live birth (40.7%) / 365 non-live birth (59.3%) |
+| Columns | 62 clinical columns, including the raw `Embryo morphology` text |
+| Target column | `Transplant outcome (Y)` |
+| Outcome classes | childbirth 251, not pregnant 293, abortion 45, biochemical pregnancy 27 |
+| Class balance after binarisation | 251 live birth (40.7%) / 365 non-live birth (59.3%) |
 | Missing cells | 1,302 (imputed at model time, on the training split only) |
 | Unit of analysis | one treatment cycle |
 | Collection period | February 2018 – November 2025 |
@@ -51,9 +52,11 @@ review the code without holding the data:
 One row is one cycle; patients contributing more than one cycle are not linked across
 rows.
 
-The exact column list, the numerical/categorical split, the target mapping, and the ten
-embryo-morphology columns produced by the differential ICM/TE weighting are documented
-column-by-column in
+The file carries the raw `Embryo morphology` grades as text; the ten numeric morphology
+columns are derived at run time by `encode_embryo_morphology()` in
+`compare_13models_fixed.py`, so no pre-encoding step is needed. The exact column list,
+the numerical/categorical split, the target mapping and the morphology encoding are
+documented column-by-column in
 [`../docs/dataset_encoding_documentation.md`](../docs/dataset_encoding_documentation.md).
 The aggregate outputs of a full run — model metrics, the 50 selected features, and
 consensus importance — are committed under [`../results/`](../results), so the reported
@@ -64,13 +67,13 @@ numbers can be inspected without the raw data.
 Either drop it in this directory:
 
 ```
-data/updated_method_encoded.07.25.xlsx
+data/updated_method_encoded.09.25.xlsx
 ```
 
 or keep it somewhere private and point the code at it:
 
 ```bash
-IVF_DATA_FILE=/secure/path/updated_method_encoded.07.25.xlsx python run_and_visualize.py
+IVF_DATA_FILE=/secure/path/updated_method_encoded.09.25.xlsx python run_and_visualize.py
 ```
 
 `.gitignore` excludes `data/*.xlsx`, so a local copy placed here will not be committed
